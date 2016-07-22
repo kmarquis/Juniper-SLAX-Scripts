@@ -1,0 +1,56 @@
+version 1.0;
+/*
+* This script will be used to add BGP peers to a defined group.
+* You will need to define the group within the file itself
+*/
+ns junos = "http://xml.juniper.net/junos/*/junos";
+ns xnm = "http://xml.juniper.net/xnm/1.1/xnm";
+ns jcs = "http://xml.juniper.net/junos/commit-scripts/1.0";
+ns ext = "http://xmlsoft.org/XSLT/namespace";
+import "../import/junos.xsl";
+match / {
+<op-script-results> {
+        var $usage = "This script will configure a BGP session " _
+                     "You will need to have the peers IP address " _
+                     "without netmask, AS number, IRR Record " _
+                     "and the name of the BGP group.";
+        expr jcs:output( $usage );
+        var $bgp_group = jcs:get-input( "Enter BGP Group: ");
+        var $neighbor = jcs:get-input( "Enter IP address: " );
+        var $as = jcs:get-input( "Enter AS Number: " );
+        var $irr_description = jcs:get-input( "Enter IRR Record, this can be confirmed on https://peeringdb.com by searching their AS number: " );
+        var $group = $bgp_group;
+        var $peer_address = $neighbor;
+        var $asn = $as;
+        var $description = $irr_description;
+        var $connection = jcs:open();
+        var $configuration = {
+        <configuration> {
+             <protocols merge="merge"> {
+                <bgp> {
+                  <group> {
+                        <name>$group;
+                        <neighbor> {
+                            <name>$peer_address;
+                            <description>$description;
+                            <peer-as>$asn;
+                          }
+                    }
+                }
+              }
+            }
+        }
+
+    var $commit-options = {
+       <commit-options> {
+          <synchronize>;
+           <log> " Neighbor added to "_ $bgp_group _ "IP address of " _ $neighbor _ " and ASN: " _ $as;
+        }
+    }
+
+    var $results := {
+        call jcs:load-configuration( $connection, $configuration, $commit-options, $action = "merge" );
+      }
+    var $close-results = jcs:close( $connection );
+  }
+}
