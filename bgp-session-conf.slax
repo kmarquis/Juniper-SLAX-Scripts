@@ -1,0 +1,75 @@
+version 1.0;
+/*
+* This script will be used to create a simple BGP in a defined group on the device or
+* can be used to create a new BGP group.
+*/
+
+ns junos = "http://xml.juniper.net/junos/*/junos";
+ns xnm = "http://xml.juniper.net/xnm/1.1/xnm";
+ns jcs = "http://xml.juniper.net/junos/commit-scripts/1.0";
+ns ext = "http://xmlsoft.org/XSLT/namespace";
+
+import "../import/junos.xsl";
+
+match / {
+<op-script-results> {
+        /* This is the output that will explain what the script is used for
+        * The $usage text will be shown because of jcs:output */
+
+        var $usage = "This script will configure a BGP session " _
+                     "You will need to have the peers IP address " _
+                     "without netmask, AS number, IRR Record " _
+                     "and the name of the BGP group.";
+        expr jcs:output( $usage );
+
+
+        /* The information that the user will need to input, to provide for a simple
+        * BGP session. Ideally to a group that has import/export policies at the top
+	* of the stanza */
+        var $bgp_group = jcs:get-input( "Enter BGP Group: ");
+        var $neighbor = jcs:get-input( "Enter IP address: " );
+        var $as = jcs:get-input( "Enter AS Number: " );
+        var $irr_description = jcs:get-input( "Enter IRR Record, this can be confirmed on https://peeringdb.com by searching their AS number: " );
+	
+	/* Variables that will be used in the configuration of the group and session */
+	var $group = $bgp_group;
+        var $peer_address = $neighbor;
+        var $asn = $as;
+        var $description = $irr_description;
+
+	/* Opens connection for the change to begin  */
+        var $connection = jcs:open();
+
+        /* Configuration to be added */
+        var $configuration = {
+        <configuration> {
+             <protocols merge="merge"> {
+                <bgp> {
+                  <group> {
+                        <name>$group;
+                        <neighbor> {
+                            <name>$peer_address;
+                            <description>$description;
+                            <peer-as>$asn;
+                          }
+                    }
+                }
+              }
+            }
+        }
+
+    /* When committing the change, it must use commit synchronize and a log message will be added */
+    var $commit-options = {
+       <commit-options> {
+          <synchronize>;
+           <log> " Neighbor added to "_ $bgp_group _ "IP address of " _ $neighbor _ " and ASN: " _ $as;
+        }
+    }
+
+    /* Load and commit the change, then close connection  */
+    var $results := {
+        call jcs:load-configuration( $connection, $configuration, $commit-options, $action = "merge" );
+      }
+    var $close-results = jcs:close( $connection );
+  }
+}
