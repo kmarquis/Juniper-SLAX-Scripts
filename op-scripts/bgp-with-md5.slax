@@ -1,0 +1,123 @@
+version 1.0;
+
+/*
+* This script will be used to create a simple BGP session in a defined group or
+* can be used to create a new BGP group. If you have traceoptions set for you op scripts
+* you will need to change the error output to match the name of our traceoption
+* 
+* This script is ideal for adding new peers to pre-existing group that has all the import
+* export and other BGP parameters pre configured. 
+*/
+
+ns junos = "http://xml.juniper.net/junos/*/junos";
+ns xnm = "http://xml.juniper.net/xnm/1.1/xnm";
+ns jcs = "http://xml.juniper.net/junos/commit-scripts/1.0";
+ns ext = "http://xmlsoft.org/XSLT/namespace";
+
+import "../import/junos.xsl";
+
+match / {
+<op-script-results> {
+
+        /* This is the output that will explain what the script is used for
+        * The $usage text will be shown because of jcs:output */
+
+        var $usage = "This script will configure a BGP session " _
+                     "You will need to have the peers IP address " _
+                     "without netmask, AS number, IRR Record " _
+                     "and the name of the BGP group.";
+        expr jcs:output( $usage );
+
+        /* The information that the user will need to input, to provide for a simple
+        * BGP session. Ideally to a group that has import/export policies at the top
+        * of the stanza */
+
+        var $bgp_group = jcs:get-input( "Enter BGP Group: ");
+        var $neighbor = jcs:get-input( "Enter IP address: " );
+        var $as = jcs:get-input( "Enter AS Number: " );
+        var $md5password = jcs:get-input( "Enter MD5 password: " );
+        var $irr_description = jcs:get-input( "Enter IRR Record/AS-Set, this can be confirmed on https://peeringdb.com by searching their AS number: " );
+
+        /* Variables that will be used in the configuration of the group and session */
+        var $group = $bgp_group;
+        var $peer_address = $neighbor;
+        var $asn = $as;
+        var $md5 = $md5password;
+        var $description = $irr_description;
+
+
+        /* Opens connection for the change to begin */
+        var $connection = jcs:open();
+
+        /* Configuration to be added */
+        var $configuration = {
+        <configuration> {
+             <protocols merge="merge"> {
+                <bgp> {
+                  <group> {
+                        <name>$group;
+                        <neighbor> {
+                            <name>$peer_address;
+                            <description>$description;
+                            <authentication-key>$md5;  
+                            <peer-as>$asn;
+                          }
+                    }
+                }
+              }
+            }
+        }
+
+      /* Output to allow the user to double check the input details */
+      expr jcs:output( " ");
+      expr jcs:output( " ***** Please Check and Review the details below ***** " );
+      expr jcs:output( " Group: " _ $group );
+      expr jcs:output( " Peer Address: " _ $peer_address );
+      expr jcs:output( " IRR Record/AS-Set: " _ $description );
+      expr jcs:output( " MD5 Password: " _ $md5 );
+      expr jcs:output( " AS Number: " _ $asn );
+      expr jcs:output( " ");	
+
+      /* Confirmation whether the user wanted to continue with the script or not */ 
+      var $input-check = jcs:get-input( "Are you happy with details above? Please type yes or no: " );
+
+      /* If the user answers YES, then changes will be checked for any errors and committed to the device */
+
+      if( $input-check == "yes") {
+      /* When committing the change, it must use commit synchronize and a log message will be added */
+      var $commit-options = {
+       <commit-options> {
+          <synchronize>;
+           <log> " Neighbor added to BGP group "_ $bgp_group _ " with peer address " _ $neighbor _ " and ASN " _ $as _ " with a MD5 password ";
+        }
+      }
+        var $results := {
+        call jcs:load-configuration( $connection, $configuration, $commit-options, $action = "merge" );
+      }
+
+      /* If any errors occurred during the commit process an ouput will be displayed to the user*/
+            if( $results//xnm:error ) {
+                for-each( $results//xnm:error ) {
+                    expr jcs:output( "BGP Session has not committed, please check input details. Additionally, run the command: show log op_trace for the error. Please raise with script owner" );
+                }   
+            }
+
+      /* Otherwise, report configuration success and close connection */
+            else {
+                expr jcs:output( $description _ " has been added to the BGP group " _ $bgp_group _ " with Peer address " _ $neighbor _ " the password has been set as " _ $md5 _ ". This can be checked by running: show bgp neighbor " _ $neighbor );
+                /* Add a syslog message, Facility: Change and Severity: Info. */
+                expr jcs:syslog( "change.info", $user _ " completed the creation of a BGP session using OP Script: " _ $script );
+                copy-of jcs:close( $connection );
+            }
+      }
+      
+      /* If the user answers NO, no change is made, a syslog message is created and the connection to the device is closed */
+        else {
+          expr jcs:output( $user _ " has cancelled configuration, no change has been made" );
+          /* Add a syslog message, Facility: Change with Severity: Info */
+          expr jcs:syslog( "change.info", $user _ " cancelled creation of BGP session using OP Script: " _ $script );
+          copy-of jcs:close( $connection );
+    }
+  }
+}
+
