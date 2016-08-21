@@ -1,0 +1,46 @@
+version 1.0;
+ns junos = "http://xml.juniper.net/junos/*/junos";
+ns xnm = "http://xml.juniper.net/xnm/1.1/xnm";
+ns jcs = "http://xml.juniper.net/junos/commit-scripts/1.0";
+ns ext = "http://xmlsoft.org/XSLT/namespace";
+import "../import/junos.xsl";
+var $arguments = {
+  <argument> {
+    <name> "interface";
+    <description> "The interface that will be disabled";
+    }
+}
+param $interface;
+match / {
+  <op-script-results> {
+    var $connection = jcs:open();
+    var $configuration = {
+        <configuration> {
+             <interfaces> {
+                <interface> {
+                    <name>$interface;
+                    <disable>;
+                }
+            }           
+        }
+    }
+    var $commit-options := {
+            <commit-options> {
+                <synchronize>;
+                    <log> "Interface " _ $interface _ " has been disabled";
+        }
+    }  
+    var $results := {
+        call jcs:load-configuration( $connection, $configuration, $commit-options, $action = "merge" );
+    }   
+    if( $results//xnm:error ) {
+        expr jcs:output( "Interface " _ $interface _ " has not been disabled, please check the interface exists" );
+        expr jcs:syslog( "change.error", $user _ " has not disabled " _ $interface _ " using OP Script: " _ $script );  
+    }
+    else {
+      expr jcs:output( "Interface " _ $interface _ " has been disabled" );
+      expr jcs:syslog( "change.info", $user _ " has disabled " _ $interface _ " using OP Script: " _ $script );     
+    }
+    copy-of jcs:close( $connection );
+  }
+}
