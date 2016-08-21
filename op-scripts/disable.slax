@@ -1,19 +1,52 @@
 version 1.0;
+
+/*
+This script will disable a user definded interface
+
+**********
+CLI SYNTAX
+**********
+marquk01@TestMX480> op disable ?                        
+Possible completions:
+  <[Enter]>            Execute this command
+  <name>               Argument name
+  detail               Display detailed output
+  interface            The interface that will be disabled
+  invoke-debugger      Invoke script in debugger mode
+  |                    Pipe through a command
+
+******
+OUTPUT
+******
+marquk01@TestMX480> op disable interface ge-5/1/3    
+Interface ge-5/1/3 has been disabled
+
+*/
+
 ns junos = "http://xml.juniper.net/junos/*/junos";
 ns xnm = "http://xml.juniper.net/xnm/1.1/xnm";
 ns jcs = "http://xml.juniper.net/junos/commit-scripts/1.0";
 ns ext = "http://xmlsoft.org/XSLT/namespace";
 import "../import/junos.xsl";
+
+/* Define the argument description for CLI help */
 var $arguments = {
   <argument> {
     <name> "interface";
     <description> "The interface that will be disabled";
     }
 }
+
+/* CLI argument */
 param $interface;
+
 match / {
   <op-script-results> {
+
+    /* Open Connection to device */
     var $connection = jcs:open();
+
+    /* Configuration to be added */
     var $configuration = {
         <configuration> {
              <interfaces> {
@@ -24,23 +57,33 @@ match / {
             }           
         }
     }
+
+    /* When committing the change, it must use commit synchronize and a log message will be added */
     var $commit-options := {
             <commit-options> {
                 <synchronize>;
                     <log> "Interface " _ $interface _ " has been disabled";
         }
-    }  
+    }
+
+    /* Load, commits and merges the change */      
     var $results := {
         call jcs:load-configuration( $connection, $configuration, $commit-options, $action = "merge" );
-    }   
+    }  
+
+    /* If any errors occurred during the commit process then report them to the syslog */
     if( $results//xnm:error ) {
         expr jcs:output( "Interface " _ $interface _ " has not been disabled, please check the interface exists" );
         expr jcs:syslog( "change.error", $user _ " has not disabled " _ $interface _ " using OP Script: " _ $script );  
     }
+
+    /* Otherwise, report success */    
     else {
       expr jcs:output( "Interface " _ $interface _ " has been disabled" );
       expr jcs:syslog( "change.info", $user _ " has disabled " _ $interface _ " using OP Script: " _ $script );     
     }
+
+    /* Close Connection to device */
     copy-of jcs:close( $connection );
   }
 }
