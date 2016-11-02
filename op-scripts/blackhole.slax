@@ -1,5 +1,8 @@
 version 1.0;
 
+/* This script will be used to inject RTBH static IPv4 routes that will be preconfigured
+with the correct tag and advertised into BGP to stop would be attackers */
+
 ns junos = "http://xml.juniper.net/junos/*/junos";
 ns xnm = "http://xml.juniper.net/xnm/1.1/xnm";
 ns jcs = "http://xml.juniper.net/junos/commit-scripts/1.0";
@@ -10,21 +13,30 @@ import "../import/junos.xsl";
 match / {
 <op-script-results> {
 
+    /* This is the output that will explain what the script is used for
+    * The $usage text will be shown because of jcs:output */
+
     var $usage = "This script sets a RTBH static route with the correct TAG, " _
                  "ready for the BGP advertisement. " _
-                 "You only need to provide the host route IP with no mask," _ 
-                 "the script defaults as a /32. " _
-                 "Please also supply a reference, BOL-Ticket or Remedy.";
-    
-    var $temp = jcs:output($usage);
+                 "You only need to provide the host route IP with no mask," _
+                 "the script defaults as a /32. ";
+
+    expr jcs:output($usage);
+
+    /* The information that the user will need to input, to provide the details
+    *  on the route that will be null routed. Additionally, it the user can add 
+    * a comment as a future reference */
 
     var $route = jcs:get-input("Enter host route: ");
     var $reason = jcs:get-input("Please provide a reason or reference: ");
-
     var $route32 = $route _ "/32";
     var $comment = "/* RTBH filtered - " _ $reason _ " */";
 
-    var $config-changes = {
+    /* Opens connection for the change to begin */
+    var $connection = jcs:open();
+
+    /* Configuration to be added */   
+    var $configuration = {
         <configuration> {
             <routing-options> {
                <static> {
@@ -39,22 +51,33 @@ match / {
         }
     }
 
-    var $load-action = "merge";
 
-    var $options := {
+    /* When committing the change, it must use commit synchronize and a log message will be added */    
+    var $commit-options := {
        <commit-options> {
-           <log> "rtbh static route added " _ $route32 _ " reason: " _ $reason;;
+          <synchronize>;
+           <log> "RTBH Static Route has added " _ $route32 _ " reason: " _ $reason;;
         }
     }
 
-    var $conn_handle = jcs:open();
-
-    var $results := { 
-      call jcs:load-configuration($action=$load-action, $commit-options=$options, $configuration=$config-changes, $connection=$conn_handle); 
+    var $results := {
+      call jcs:load-configuration($commit-options, $configuration, $connection, $action= "merge" );
     }
 
-    var $close-results = jcs:close($conn_handle);
 
-}
-}
+      /* If any errors occurred during the commit process an ouput will be displayed to the user*/
+            if( $results//xnm:error ) {
+                for-each( $results//xnm:error ) {
+                    expr jcs:output( "Route hasn't been injected. Please raise with script owner and Network Team to investgate ASAP!" );
+                }
+            }
+            
+            else {
+                expr jcs:output( $route32 _ " has been injected into the BGP. Please check " _ $reason _ " for the details " );
+                /* Add a syslog message, Facility: Change and Severity: Info. */
+                expr jcs:syslog( "change.info", $user _ " injected a RTBH route using OP Script: " _ $script );
+                copy-of jcs:close( $connection );
+            }
 
+  }
+}
