@@ -1,0 +1,104 @@
+version 1.0;
+
+/* This script will be used to configure flowspec filter that will be injected into BGP
+* to help combat against attack on a destination IP address within flowspec enabled network. 
+* The user will need to set the destination prefix with netmask, protocol and port. The 
+* default the action of this script is to discard. 
+
+=================
+	OUTPUT
+=================
+
+marquk01@juise:~/git/op-scripts$ juise @10.1.0.222 flowspec.slax 
+This script creates a flowspec route that will be ready for advertisement into BGP. You will need to provide the destination prefix with netmask
+and the port that needs filtering. The default action will discard traffic. Please provide a reference, a OPS-ticket for the route name.
+Enter JIRA Ticket Reference: mega-man
+Enter Destination prefix with netmask, ie 8.8.8.8/32:  89.59.13.0/24
+Enter Protocol, ie tcp,udp or number: tcp
+Enter Port number: 80
+Password:
+Flowspec has been enabled for 89.59.13.0/24 port 80 and injected into the BGP. Please check mega-man for the details 
+Use commands: show route table inetflow.0 and show firewall filter __flowspec_default_inet__ to verify  
+
+*/
+
+ns junos = "http://xml.juniper.net/junos/*/junos";
+ns xnm = "http://xml.juniper.net/xnm/1.1/xnm";
+ns jcs = "http://xml.juniper.net/junos/commit-scripts/1.0";
+ns ext = "http://xmlsoft.org/XSLT/namespace";
+
+import "../import/junos.xsl";
+
+
+match / {
+	  <op-script-results> {
+	    
+    /* This is the output that will explain what the script is used for
+    * The $usage text will be shown because of jcs:output */
+
+    var $usage = "This script creates a flowspec route that will be ready " _
+    			 "for advertisement into BGP. You will need to provide " _
+    			 "the destination prefix with netmask and the port that " _
+    			 "needs filtering. The default action will discard traffic. " _
+    			 "Please provide a reference, a OPS-ticket for the route name.";
+    expr jcs:output($usage);
+
+    /* The information that the user will need to input, to provide the details
+    * on the flowspec route. */
+
+    var $filtername = jcs:get-input( "Enter JIRA Ticket Reference: " );
+    var $route = jcs:get-input( "Enter Destination prefix with netmask, ie 8.8.8.8/32:  " );
+    var $protocol = jcs:get-input( "Enter Protocol, ie tcp,udp or number: ");
+    var $port = jcs:get-input( "Enter Port number: ");
+
+    /* Opens connection for the change to begin */
+    var $connection = jcs:open();
+
+    /* Configuration to be added */
+    var $configuration = {
+    	<configuration> {
+    		<routing-options merge="merge"> {
+    			<flow> {
+    				<route> {
+    					<name> $filtername;
+    						<match> {
+    							<destination> $route;
+    							<protocol> $protocol;
+    							<port> $port;
+    						}
+    						<then> discard;
+    				}
+    			}
+    		}
+    	}
+    }
+
+    /* When committing the change, it must use commit synchronize and a log message will be added */
+    var $commit-options := {
+       <commit-options> {
+          <synchronize>;       
+           <log> "Flowspec Route has been created for destination " _ $route _ " on port " _ $port _ " See Ticket " _ $filtername _ " for details ";
+        }
+    }
+
+    var $results := { 
+      call jcs:load-configuration($commit-options, $configuration, $connection, $action= "merge" ); 
+    }
+
+      /* If any errors occurred during the commit process an ouput will be displayed to the user*/
+            if( $results//xnm:error ) {
+                 for-each( $results//xnm:error ) {
+                 	expr jcs:output( $results//xnm:error );
+                    expr jcs:output( "Route hasn't been injected. Please raise with script owner and Network Team to investgate ASAP!" );
+                }  
+            }
+
+            else {
+                expr jcs:output( "Flowspec has been enabled for " _ $route _ " port " _ $port _ " and injected into the BGP. Please check " _ $filtername _ " for the details " );
+                expr jcs:output( "Use commands: show route table inetflow.0 and show firewall filter __flowspec_default_inet__ to verify " );
+                /* Add a syslog message, Facility: Change and Severity: Info. */
+                expr jcs:syslog( "change.info", $user _ " injected a Flowspec route using OP Script: " _ $script );
+                copy-of jcs:close( $connection );
+            }
+	  }
+	}
