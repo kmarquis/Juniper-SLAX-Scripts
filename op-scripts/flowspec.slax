@@ -66,7 +66,9 @@ match / {
     							<protocol> $protocol;
     							<port> $port;
     						}
-    						<then> discard;
+    						<then> {
+    							<discard>;
+    						} 
     				}
     			}
     		}
