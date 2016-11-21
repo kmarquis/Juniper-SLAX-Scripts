@@ -1,0 +1,80 @@
+version 1.0; 
+
+/*
+ This script will list all the Routing Instances configuraed on Junos Device and deatils
+ that will be help with documentation.
+ It will show the following details: 
+ * Instance Name
+ * Instance Type
+ * Interface(s)
+ * Route Distinguisher
+ * VRF Target (Route Target)
+
+=========
+ OUTPUT
+=========
+
+marquk01@TestMX480> op routing-instance 
+Name                     Type           Interface   RD-Type   Route-Target
+l3vpn-B                  vrf            xe-1/1/1.0  100:2     target:100:2
+test-1                   l2vpn          ge-5/1/8.0  100:20    target:100:20
+test-2                   vpls           ge-5/1/5.0  100:30    target:100:300
+                         vpls           ge-5/1/6.0  100:30    target:100:300
+test-3                   virtual-router ge-5/1/7.0                      
+
+=========
+ NOTES
+=========
+
+The spacing I've kind of struggled with to get working as I liked. It would be someone that will 
+need editing depending on your naming conversations. Same would go with RD-Type and Route-Target 
+spacing but hopefully when I get better at this, I'll be able to make look better.
+*/
+
+ns junos = "http://xml.juniper.net/junos/*/junos";
+ns xnm = "http://xml.juniper.net/xnm/1.1/xnm";
+ns jcs = "http://xml.juniper.net/junos/commit-scripts/1.0";
+ns ext = "http://xmlsoft.org/XSLT/namespace";
+ns str = "http://exslt.org/strings";
+import "../import/junos.xsl";
+
+/* This will tell the script where to collect Routing Instance details from the commited
+configuration database using get variable and defining variable to collect this 
+infomation*/
+
+var $interface-config = jcs:invoke( "get-interface-information" );
+var $routing-instance-config = jcs:invoke( "get-configuration" );
+
+match / {
+  <op-script-results> {
+
+        /* This will be the headers of the output. These will be Instance Name, Instance Type
+        Interface(s), Route Distinguister, VRF Target aka Route Target. The first half of the 
+        line setting the padding for the row */
+
+        expr jcs:output( jcs:printf( "%-25s%-15s%-15s%-14s%-12s", "Name", "Type", "Interface", "RD-Type", "Route-Target" ) );
+
+        /* This section is where the ouput variables are defined. It will loop through every 
+        routing instance and pull out the infromation as described above */
+        for-each ( $routing-instance-config/routing-instances/instance ) {
+          var $routing-instance-name = name;
+          var $routing-instance-type = instance-type;
+          var $route-distinguisher-number = ./route-distinguisher/rd-type;
+          var $vrf-target-number = ./vrf-target/community;
+
+        /* This section states for each interface listed with the Routing Instance Stanza, if they
+        match the logical interface within the interface stanza then list and output all the details
+        that have been collected; Name, Type ,Interface, RD and RT using the same padding */
+
+          for-each (interface) {
+            var $interface = name;
+            for-each ($interface-config/physical-interface/logical-interface) {
+              if ( name == $interface ) {
+                 expr jcs:output( jcs:printf( "%j1-25s%-15s%-15s%-14s%-12s", $routing-instance-name, $routing-instance-type, $interface, $route-distinguisher-number, $vrf-target-number ) );
+              }
+            }
+           }
+         }
+      }
+  }
+
